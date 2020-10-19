@@ -7,7 +7,7 @@
 
 from __future__ import print_function
 __license__ = 'GPL v3'
-__version__ = "1.00"
+__version__ = "1.0"
 
 # This is a python script. You need a Python interpreter to run it.
 # For example, ActiveState Python, which exists for windows.
@@ -73,7 +73,7 @@ __version__ = "1.00"
 #  0.40 - moved unicode_argv call inside main for Windows DeDRM compatibility
 #  0.41 - Fixed potential unicode problem in command line calls
 #  0.42 - Added GPL v3 licence. updated/removed some print statements
-#  3.00 - Added Python 3 compatibility for calibre 5.0
+#  1.0  - Python 3 compatibility for calibre 5.0
 
 import sys
 import os
@@ -94,10 +94,11 @@ class SafeUnbuffered:
         if self.encoding == None:
             self.encoding = "utf-8"
     def write(self, data):
-        if isinstance(data,bytes):
+        if isinstance(data, str):
             data = data.encode(self.encoding,"replace")
-        self.stream.write(data)
-        self.stream.flush()
+        self.stream.buffer.write(data)
+        self.stream.buffer.flush()
+
     def __getattr__(self, attr):
         return getattr(self.stream, attr)
 
@@ -137,10 +138,8 @@ def unicode_argv():
         # this should never happen
         return ["mobidedrm.py"]
     else:
-        argvencoding = sys.stdin.encoding
-        if argvencoding == None:
-            argvencoding = 'utf-8'
-        return sys.argv
+        argvencoding = sys.stdin.encoding or "utf-8"
+        return [arg if isinstance(arg, str) else str(arg, argvencoding) for arg in sys.argv]
 
 
 class DrmException(Exception):
@@ -154,12 +153,12 @@ class DrmException(Exception):
 # Implementation of Pukall Cipher 1
 def PC1(key, src, decryption=True):
     # if we can get it from alfcrypto, use that
-    #try:
-    #    return Pukall_Cipher().PC1(key,src,decryption)
-    #except NameError:
-    #    pass
-    #except TypeError:
-    #    pass
+    try:
+        return Pukall_Cipher().PC1(key,src,decryption)
+    except NameError:
+        pass
+    except TypeError:
+        pass
 
     # use slow python version, since Pukall_Cipher didn't load
     sum1 = 0;
@@ -246,7 +245,7 @@ class MobiBook:
         pass
 
     def __init__(self, infile):
-        print("MobiDeDrm v{0:s}.\nCopyright © 2008-2017 The Dark Reverser, Apprentice Harper et al.".format(__version__))
+        print("MobiDeDrm v{0:s}.\nCopyright © 2008-2020 The Dark Reverser, Apprentice Harper et al.".format(__version__))
 
         try:
             from alfcrypto import Pukall_Cipher
@@ -331,7 +330,7 @@ class MobiBook:
         }
         title = ''
         codec = 'windows-1252'
-        if self.magic == 'BOOKMOBI':
+        if self.magic == b'BOOKMOBI':
             if 503 in self.meta_array:
                 title = self.meta_array[503]
             else:
@@ -522,7 +521,7 @@ def cli_main():
     argv=unicode_argv()
     progname = os.path.basename(argv[0])
     if len(argv)<3 or len(argv)>4:
-        print("MobiDeDrm v{0:s}.\nCopyright © 2008-2017 The Dark Reverser, Apprentice Harper et al.".format(__version__))
+        print("MobiDeDrm v{0:s}.\nCopyright © 2008-2020 The Dark Reverser, Apprentice Harper et al.".format(__version__))
         print("Removes protection from Kindle/Mobipocket, Kindle/KF8 and Kindle/Print Replica ebooks")
         print("Usage:")
         print("    {0} <infile> <outfile> [<Comma separated list of PIDs to try>]".format(progname))
@@ -531,7 +530,8 @@ def cli_main():
         infile = argv[1]
         outfile = argv[2]
         if len(argv) == 4:
-            pidlist = argv[3].split(',')
+            # convert from unicode to bytearray before splitting.
+            pidlist = argv[3].encode('utf-8').split(b',')
         else:
             pidlist = []
         try:

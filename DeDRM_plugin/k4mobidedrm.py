@@ -103,10 +103,11 @@ class SafeUnbuffered:
         if self.encoding == None:
             self.encoding = "utf-8"
     def write(self, data):
-        if isinstance(data,bytes):
+        if isinstance(data, str):
             data = data.encode(self.encoding,"replace")
-        self.stream.write(data)
-        self.stream.flush()
+        self.stream.buffer.write(data)
+        self.stream.buffer.flush()
+
     def __getattr__(self, attr):
         return getattr(self.stream, attr)
 
@@ -146,10 +147,8 @@ def unicode_argv():
         # this should never happen
         return ["mobidedrm.py"]
     else:
-        argvencoding = sys.stdin.encoding
-        if argvencoding == None:
-            argvencoding = "utf-8"
-        return argv
+        argvencoding = sys.stdin.encoding or "utf-8"
+        return [arg if isinstance(arg, str) else str(arg, argvencoding) for arg in sys.argv]
 
 # cleanup unicode filenames
 # borrowed from calibre from calibre/src/calibre/__init__.py
@@ -159,13 +158,13 @@ def unicode_argv():
 # and some improvements suggested by jhaisley
 def cleanup_name(name):
     # substitute filename unfriendly characters
-    name = name.replace("<","[").replace(">","]").replace(" : "," – ").replace(": "," – ").replace(":","—").replace("/","_").replace("\\","_").replace("|","_").replace("\"","\'").replace("*","_").replace("?",u"")
+    name = name.replace("<","[").replace(">","]").replace(" : "," – ").replace(": "," – ").replace(":","—").replace("/","_").replace("\\","_").replace("|","_").replace("\"","\'").replace("*","_").replace("?","")
     # white space to single space, delete leading and trailing while space
     name = re.sub(r"\s", " ", name).strip()
     # delete control characters
-    name = u"".join(char for char in name if ord(char)>=32)
+    name = "".join(char for char in name if ord(char)>=32)
     # delete non-ascii characters
-    name = u"".join(char for char in name if ord(char)<=126)
+    name = "".join(char for char in name if ord(char)<=126)
     # remove leading dots
     while len(name)>0 and name[0] == ".":
         name = name[1:]
@@ -205,14 +204,14 @@ def GetDecryptedBook(infile, kDatabases, androidFiles, serials, pids, starttime 
 
     mobi = True
     magic8 = open(infile,'rb').read(8)
-    if magic8 == '\xeaDRMION\xee':
+    if magic8 == b'\xeaDRMION\xee':
         raise DrmException("The .kfx DRMION file cannot be decrypted by itself. A .kfx-zip archive containing a DRM voucher is required.")
 
     magic3 = magic8[:3]
-    if magic3 == 'TPZ':
+    if magic3 == b'TPZ':
         mobi = False
 
-    if magic8[:4] == 'PK\x03\x04':
+    if magic8[:4] == b'PK\x03\x04':
         mb = kfxdedrm.KFXZipBook(infile)
     elif mobi:
         mb = mobidedrm.MobiBook(infile)
@@ -310,10 +309,10 @@ def usage(progname):
 def cli_main():
     argv=unicode_argv()
     progname = os.path.basename(argv[0])
-    print("K4MobiDeDrm v{0}.\nCopyright © 2008-2017 Apprentice Harper et al.".format(__version__))
+    print("K4MobiDeDrm v{0}.\nCopyright © 2008-2020 Apprentice Harper et al.".format(__version__))
 
     try:
-        opts, args = getopt.getopt(argv[1:], "k:p:s:a:")
+        opts, args = getopt.getopt(argv[1:], "k:p:s:a:h")
     except getopt.GetoptError as err:
         print("Error in options or arguments: {0}".format(err.args[0]))
         usage(progname)
@@ -330,6 +329,9 @@ def cli_main():
     pids = []
 
     for o, a in opts:
+        if o == "-h":
+            usage(progname)
+            sys.exit(0)
         if o == "-k":
             if a == None :
                 raise DrmException("Invalid parameter for -k")
@@ -337,7 +339,7 @@ def cli_main():
         if o == "-p":
             if a == None :
                 raise DrmException("Invalid parameter for -p")
-            pids = a.split(',')
+            pids = a.encode('utf-8').split(b',')
         if o == "-s":
             if a == None :
                 raise DrmException("Invalid parameter for -s")
@@ -346,9 +348,6 @@ def cli_main():
             if a == None:
                 raise DrmException("Invalid parameter for -a")
             androidFiles.append(a)
-
-    # try with built in Kindle Info files if not on Linux
-    k4 = not sys.platform.startswith('linux')
 
     return decryptBook(infile, outdir, kDatabaseFiles, androidFiles, serials, pids)
 

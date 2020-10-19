@@ -15,14 +15,17 @@
 """
 Re-write zip (or ePub) fixing problems with file names (and mimetype entry).
 """
-from __future__ import print_function
+
 
 __license__ = 'GPL v3'
 __version__ = "1.1"
 
 import sys
 import zlib
-import calibre_plugins.dedrm.zipfilerugged as zipfilerugged
+try:
+    import zipfilerugged
+except:
+    import calibre_plugins.dedrm.zipfilerugged as zipfilerugged
 import os
 import os.path
 import getopt
