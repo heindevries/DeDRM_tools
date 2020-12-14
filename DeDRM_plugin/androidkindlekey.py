@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # androidkindlekey.py
-# Copyright © 2010-20 by Thom, Apprentice  et al.
+# Copyright © 2010-20 by Thom, Apprentice Harper et al.
 
 # Revision history:
 #  1.0   - AmazonSecureStorage.xml decryption to serial number
@@ -30,10 +30,7 @@ import tempfile
 import zlib
 import tarfile
 from hashlib import md5
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from io import BytesIO as StringIO
+from io import BytesIO
 from binascii import a2b_hex, b2a_hex
 
 # Routines common to Mac and PC
@@ -116,7 +113,7 @@ class AndroidObfuscation(object):
         cipher = self._get_cipher()
         padding = len(self.key) - len(plaintext) % len(self.key)
         plaintext += chr(padding) * padding
-        return b2a_hex(cipher.encrypt(plaintext))
+        return b2a_hex(cipher.encrypt(plaintext.encode('utf-8')))
 
     def decrypt(self, ciphertext):
         cipher = self._get_cipher()
@@ -136,7 +133,7 @@ class AndroidObfuscationV2(AndroidObfuscation):
     '''
 
     count = 503
-    password = 'Thomsun was here!'
+    password = b'Thomsun was here!'
 
     def __init__(self, salt):
         key = self.password + salt
@@ -198,6 +195,7 @@ def get_serials1(path=STORAGE1):
     try:
         tokens = set(get_value('kindle.account.tokens').split(','))
     except:
+        sys.stderr.write('cannot get kindle account tokens\n')
         return []
 
     serials = []
@@ -217,15 +215,14 @@ def get_serials2(path=STORAGE2):
     import sqlite3
     connection = sqlite3.connect(path)
     cursor = connection.cursor()
-    cursor.execute('''select userdata_value from userdata where userdata_key like '%/%token.device.deviceserialname%' ''')
-    userdata_keys = cursor.fetchall()
+    cursor.execute('''select device_data_value from device_data where device_data_key like '%serial.number%' ''')
+    device_data_keys = cursor.fetchall()
     dsns = []
-    for userdata_row in userdata_keys:
+    for device_data_row in device_data_keys:
         try:
-            if userdata_row and userdata_row[0]:
-                userdata_utf8 = userdata_row[0].encode('utf8')
-                if len(userdata_utf8) > 0:
-                    dsns.append(userdata_utf8)
+            if device_data_row and device_data_row[0]:
+                if len(device_data_row[0]) > 0:
+                    dsns.append(device_data_row[0])
         except:
             print("Error getting one of the device serial name keys")
             traceback.print_exc()
@@ -238,9 +235,12 @@ def get_serials2(path=STORAGE2):
     for userdata_row in userdata_keys:
         try:
             if userdata_row and userdata_row[0]:
-                userdata_utf8 = userdata_row[0].encode('utf8')
-                if len(userdata_utf8) > 0:
-                    tokens.append(userdata_utf8)
+                if len(userdata_row[0]) > 0:
+                    if ',' in userdata_row[0]:
+                        splits = userdata_row[0].split(',')
+                        for split in splits:
+                            tokens.append(split)
+                    tokens.append(userdata_row[0])
         except:
             print("Error getting one of the account token keys")
             traceback.print_exc()
@@ -251,9 +251,8 @@ def get_serials2(path=STORAGE2):
     for x in dsns:
         serials.append(x)
         for y in tokens:
-            serials.append('%s%s' % (x, y))
-    for y in tokens:
-        serials.append(y)
+            serials.append(y)
+            serials.append(x+y)
     return serials
 
 def get_serials(path=STORAGE):
@@ -275,8 +274,8 @@ def get_serials(path=STORAGE):
     try :
         read = open(path, 'rb')
         head = read.read(24)
-        if head[:14] == 'ANDROID BACKUP':
-            output = StringIO(zlib.decompress(read.read()))
+        if head[:14] == b'ANDROID BACKUP':
+            output = BytesIO(zlib.decompress(read.read()))
     except Exception:
         pass
     finally:
@@ -390,7 +389,7 @@ def gui_main():
         import tkinter.filedialog
     except:
         print("tkinter not installed")
-        return cli_main()
+        return 0
 
     class DecryptionDialog(tkinter.Frame):
         def __init__(self, root):

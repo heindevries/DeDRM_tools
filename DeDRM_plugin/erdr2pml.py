@@ -200,7 +200,7 @@ class Sectionizer(object):
         self.num_sections, = struct.unpack('>H', self.contents[76:78])
         # Dictionary or normal content (TODO: Not hard-coded)
         if self.header[0x3C:0x3C+8] != ident:
-            if self.header[0x3C:0x3C+8] == "PDctPPrs":
+            if self.header[0x3C:0x3C+8] == b"PDctPPrs":
                 self.bkType = "Dict"
             else:
                 raise ValueError('Invalid file format')
@@ -240,7 +240,7 @@ def sanitizeFileName(name):
 def fixKey(key):
     def fixByte(b):
         return b ^ ((b ^ (b<<1) ^ (b<<2) ^ (b<<3) ^ (b<<4) ^ (b<<5) ^ (b<<6) ^ (b<<7) ^ 0x80) & 0x80)
-    return     "".join([chr(fixByte(ord(a))) for a in key])
+    return bytes([fixByte(a) for a in key])
 
 def deXOR(text, sp, table):
     r=''
@@ -269,13 +269,13 @@ class EreaderProcessor(object):
             raise ValueError('incorrect eReader version (error 2)')
         input = des.decrypt(data[-cookie_size:])
         def unshuff(data, shuf):
-            r = [''] * len(data)
+            r = [0] * len(data)
             j = 0
             for i in range(len(data)):
                 j = (j + shuf) % len(data)
                 r[j] = data[i]
-            assert    len("".join(r)) == len(data)
-            return "".join(r)
+            assert len(bytes(r)) == len(data)
+            return bytes(r)
         r = unshuff(input[0:-8], cookie_shuf)
 
         drm_sub_version = struct.unpack('>H', r[0:2])[0]
@@ -354,7 +354,7 @@ class EreaderProcessor(object):
 
     def getImage(self, i):
         sect = self.section_reader(self.first_image_page + i)
-        name = sect[4:4+32].strip('\0')
+        name = sect[4:4+32].strip(b'\0')
         data = sect[62:]
         return sanitizeFileName(name.decode('windows-1252')), data
 
@@ -404,7 +404,7 @@ class EreaderProcessor(object):
 
     def getText(self):
         des = Des(fixKey(self.content_key))
-        r = ''
+        r = b''
         for i in range(self.num_text_pages):
             logging.debug('get page %d', i)
             r += zlib.decompress(des.decrypt(self.section_reader(1 + i)))
@@ -456,8 +456,7 @@ def cleanPML(pml):
     # Convert special characters to proper PML code.  High ASCII start at (\x80, \a128) and go up to (\xff, \a255)
     pml2 = pml
     for k in range(128,256):
-        badChar = chr(k)
-        pml2 = pml2.replace(badChar, '\\a%03d' % k)
+        pml2 = pml2.replace(bytes([k]), b'\\a%03d' % k)
     return pml2
 
 def decryptBook(infile, outpath, make_pmlz, user_key):
@@ -476,7 +475,7 @@ def decryptBook(infile, outpath, make_pmlz, user_key):
         if not os.path.exists(outdir):
             os.makedirs(outdir)
         print("Decoding File")
-        sect  =Sectionizer(infile, 'PNRdPPrs')
+        sect  =Sectionizer(infile, b'PNRdPPrs')
         er = EreaderProcessor(sect, user_key)
 
         if er.getNumImages() > 0:
@@ -545,7 +544,7 @@ def usage():
 def getuser_key(name,cc):
     newname = "".join(c for c in name.lower() if c >= 'a' and c <= 'z' or c >= '0' and c <= '9')
     cc = cc.replace(" ","")
-    return struct.pack('>LL', binascii.crc32(newname) & 0xffffffff,binascii.crc32(cc[-8:])& 0xffffffff)
+    return struct.pack('>LL', binascii.crc32(bytes(newname.encode('utf-8'))) & 0xffffffff, binascii.crc32(bytes(cc[-8:].encode('utf-8'))) & 0xffffffff)
 
 def cli_main():
     print("eRdr2Pml v{0}. Copyright © 2009–2020 The Dark Reverser et al.".format(__version__))
@@ -580,7 +579,7 @@ def cli_main():
     elif len(args)==4:
         infile, outpath, name, cc = args
 
-    print(getuser_key(name,cc).encode('hex'))
+    print(binascii.b2a_hex(getuser_key(name,cc)))
 
     return decryptBook(infile, outpath, make_pmlz, getuser_key(name,cc))
 
